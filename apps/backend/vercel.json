@@ -1,8 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "bun run build:backend",
-  "outputDirectory": "dist/apps/backend",
-  "installCommand": "bun install --frozen-lockfile",
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
   "framework": null,
-  "regions": ["iad1"]
+  "outputDirectory": "dist/apps/backend"
 }

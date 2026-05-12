@@ -1,5 +1,13 @@
 {
   "name": "@parklink/backend",
   "version": "1.0.0",
-  "private": true
+  "private": true,
+  "scripts": {
+    "build": "prisma generate && npx nest build",
+    "nest": "npx nest"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.21",
+    "prisma": "^7.8.0"
+  }
 }
