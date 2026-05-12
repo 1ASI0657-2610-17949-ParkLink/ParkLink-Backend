@@ -1,0 +1,10 @@
+export const RESERVATION_STATUS = {
+  PENDING_PAYMENT: 'PENDING_PAYMENT',
+  CONFIRMED: 'CONFIRMED',
+  ACTIVE: 'ACTIVE',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type ReservationStatus =
+  (typeof RESERVATION_STATUS)[keyof typeof RESERVATION_STATUS];

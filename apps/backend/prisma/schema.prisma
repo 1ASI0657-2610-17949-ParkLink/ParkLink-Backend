@@ -1,0 +1,111 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  DRIVER
+  OWNER
+  ADMIN
+}
+
+model User {
+  id           String   @id @default(uuid())
+  fullName     String
+  email        String   @unique
+  passwordHash String
+  phone        String
+  role         UserRole @default(DRIVER)
+  plateNumber  String?
+  ownerType    String?
+  bankAccount  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+enum ParkingSpaceStatus {
+  AVAILABLE
+  RESERVED
+  OCCUPIED
+  DISABLED
+}
+
+model ParkingSpace {
+  id          String             @id @default(uuid())
+  ownerId     String
+  name        String
+  address     String
+  reference   String
+  latitude    Float
+  longitude   Float
+  pricePerHour Float
+  openingTime String
+  closingTime String
+  status      ParkingSpaceStatus @default(AVAILABLE)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+enum ReservationStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model Reservation {
+  id              String            @id @default(uuid())
+  userId          String
+  parkingSpaceId  String
+  reservationCode String            @unique
+  startTime       DateTime
+  endTime         DateTime
+  totalPrice      Float
+  status          ReservationStatus @default(PENDING_PAYMENT)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  @@index([parkingSpaceId, startTime, endTime])
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REFUNDED
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  reservationId String
+  amount        Float
+  status        PaymentStatus @default(PENDING)
+  paymentMethod String
+  receiptCode   String        @unique
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  @@index([reservationId])
+}
+
+enum NotificationType {
+  RESERVATION_CONFIRMED
+  PAYMENT_APPROVED
+  RESERVATION_CANCELLED
+  RESERVATION_EXPIRING
+  REFUND_PROCESSED
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  type      NotificationType
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  @@index([userId, isRead])
+}

@@ -1,0 +1,8 @@
+{
+  "version": 2,
+  "buildCommand": "bun run build:backend",
+  "outputDirectory": "dist/apps/backend",
+  "installCommand": "bun install --frozen-lockfile",
+  "framework": null,
+  "regions": ["iad1"]
+}

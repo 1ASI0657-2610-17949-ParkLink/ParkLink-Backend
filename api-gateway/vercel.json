@@ -1,0 +1,8 @@
+{
+  "version": 2,
+  "buildCommand": "bun run build:api-gateway",
+  "outputDirectory": "dist/api-gateway",
+  "installCommand": "bun install --frozen-lockfile",
+  "framework": null,
+  "regions": ["iad1"]
+}
