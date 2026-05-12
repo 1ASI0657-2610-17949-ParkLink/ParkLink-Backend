@@ -1,7 +1,6 @@
 {
   "version": 2,
-  "installCommand": "npm install",
-  "buildCommand": "npm run build",
+  "buildCommand": "npx nest build backend",
   "framework": null,
   "outputDirectory": "dist/apps/backend"
 }

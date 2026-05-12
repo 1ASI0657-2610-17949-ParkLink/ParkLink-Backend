@@ -23,6 +23,7 @@
     "prisma:generate:reservation-service": "bunx prisma generate --config apps/reservation-service/prisma.config.ts",
     "prisma:generate:payment-service": "bunx prisma generate --config apps/payment-service/prisma.config.ts",
     "prisma:generate:notification-service": "bunx prisma generate --config apps/notification-service/prisma.config.ts",
+    "postinstall": "bunx prisma generate --config prisma.backend.config.ts",
     "test": "bun run prisma:generate && jest --passWithNoTests",
     "test:api-gateway": "jest --config api-gateway/test/jest.config.ts",
     "test:backend": "bun run prisma:generate:backend && jest --config apps/backend/test/jest.config.ts",

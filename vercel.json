@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "buildCommand": "bun run build:backend",
+  "installCommand": "bun install",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index.js"
+    }
+  ]
+}

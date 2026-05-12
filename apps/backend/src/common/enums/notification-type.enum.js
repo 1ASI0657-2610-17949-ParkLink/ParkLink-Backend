@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.NOTIFICATION_TYPE = void 0;
+exports.NOTIFICATION_TYPE = {
+    RESERVATION_CONFIRMED: 'RESERVATION_CONFIRMED',
+    PAYMENT_APPROVED: 'PAYMENT_APPROVED',
+    RESERVATION_CANCELLED: 'RESERVATION_CANCELLED',
+    RESERVATION_EXPIRING: 'RESERVATION_EXPIRING',
+    REFUND_PROCESSED: 'REFUND_PROCESSED',
+};
+//# sourceMappingURL=notification-type.enum.js.map
