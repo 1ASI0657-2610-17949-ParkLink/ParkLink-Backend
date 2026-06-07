@@ -16,5 +16,6 @@ import { MapsService } from './maps.service';
       useExisting: GoogleMapsAdapter,
     },
   ],
+  exports: [MapsService],
 })
 export class MapsModule {}

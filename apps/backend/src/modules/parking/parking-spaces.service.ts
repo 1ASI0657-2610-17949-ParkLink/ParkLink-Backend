@@ -1,27 +1,16 @@
-import { HttpService } from '@nestjs/axios';
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import {
   PARKING_SPACE_STATUS,
   USER_ROLE,
-  unwrapApiResponse,
-  type ApiResponse,
   type AuthenticatedUser,
   type ParkingSpaceStatus,
-} from '@parklink/common';
-import { firstValueFrom } from 'rxjs';
+} from '../../common';
 import { PrismaService } from '../../database/prisma.service';
+import { MapsService } from '../maps/maps.service';
+import type { GeocodeResult } from '../maps/maps.provider';
 import { CreateParkingSpaceDto } from './dto/create-parking-space.dto';
 import { SearchParkingSpacesDto } from './dto/search-parking-spaces.dto';
 import { UpdateParkingSpaceDto } from './dto/update-parking-space.dto';
-
-export interface GeocodeResult {
-  address: string;
-  formattedAddress: string;
-  latitude: number;
-  longitude: number;
-  placeId: string;
-}
 
 export interface ParkingSpaceRecord {
   id: string;
@@ -47,8 +36,7 @@ export interface ParkingSpaceWithDistance extends ParkingSpaceRecord {
 export class ParkingSpacesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly httpService: HttpService,
-    private readonly configService: ConfigService,
+    private readonly mapsService: MapsService,
   ) {}
 
   async create(dto: CreateParkingSpaceDto, user: AuthenticatedUser): Promise<ParkingSpaceRecord> {
@@ -148,13 +136,7 @@ export class ParkingSpacesService {
   }
 
   private async geocodeAddress(address: string): Promise<GeocodeResult> {
-    const response = await firstValueFrom(
-      this.httpService.get<ApiResponse<GeocodeResult>>(`/maps/geocode`, {
-        params: { address },
-      }),
-    );
-
-    return unwrapApiResponse(response.data);
+    return this.mapsService.geocode(address);
   }
 
   private assertOwner(user: AuthenticatedUser): void {

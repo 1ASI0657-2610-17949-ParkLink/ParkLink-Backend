@@ -1,1 +1,1 @@
-export { HttpExceptionFilter } from '@parklink/common';
+export { HttpExceptionFilter } from '../../../../libs/common/src';

@@ -2,7 +2,12 @@
   "version": 2,
   "buildCommand": "bun run build:backend",
   "installCommand": "bun install",
-  "outputDirectory": "dist",
+  "outputDirectory": "dist/apps/backend",
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "{dist/apps/backend/**,apps/backend/prisma/**,node_modules/@prisma/client/**,node_modules/.prisma/**,apps/backend/node_modules/@prisma/client/**,apps/backend/node_modules/.prisma/**}"
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",

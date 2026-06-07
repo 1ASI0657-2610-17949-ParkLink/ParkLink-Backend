@@ -1,1 +1,1 @@
-export { ResponseInterceptor } from '@parklink/common';
+export { ResponseInterceptor } from '../../../../libs/common/src';

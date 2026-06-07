@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsEnum, IsNumber, IsOptional, IsString, Min } from 'class-validator';
-import { PARKING_SPACE_STATUS } from '@parklink/common';
+import { PARKING_SPACE_STATUS } from '../../../common';
 
 export class SearchParkingSpacesDto {
   @ApiPropertyOptional({ example: -34.603722 })

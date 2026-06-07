@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { type NotificationType } from '@parklink/common';
+import { type NotificationType } from '../../common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 

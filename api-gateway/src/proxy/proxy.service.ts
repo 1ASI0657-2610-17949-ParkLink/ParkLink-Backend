@@ -23,7 +23,7 @@ export class ProxyService {
           url: targetUrl,
           data: request.body,
           headers: this.forwardHeaders(request),
-          timeout: 10000,
+          timeout: 30000,
           validateStatus: () => true,
         }),
       );

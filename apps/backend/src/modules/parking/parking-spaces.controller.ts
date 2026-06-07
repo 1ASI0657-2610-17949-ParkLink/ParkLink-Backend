@@ -6,7 +6,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { CurrentUser, JwtAuthGuard, Roles, RolesGuard, USER_ROLE, type AuthenticatedUser } from '@parklink/common';
+import { CurrentUser, JwtAuthGuard, Roles, RolesGuard, USER_ROLE, type AuthenticatedUser } from '../../common';
 import { CreateParkingSpaceDto } from './dto/create-parking-space.dto';
 import { SearchParkingSpacesDto } from './dto/search-parking-spaces.dto';
 import { UpdateParkingSpaceStatusDto } from './dto/update-parking-space-status.dto';

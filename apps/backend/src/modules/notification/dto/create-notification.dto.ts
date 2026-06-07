@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
-import { NOTIFICATION_TYPE, type NotificationType } from '@parklink/common';
+import { NOTIFICATION_TYPE, type NotificationType } from '../../../common';
 
 export class CreateNotificationDto {
   @ApiPropertyOptional({ example: 'user-id' })

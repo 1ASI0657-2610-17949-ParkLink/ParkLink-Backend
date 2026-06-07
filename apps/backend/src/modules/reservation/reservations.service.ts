@@ -1,29 +1,44 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
 import {
   calculateReservationPrice,
   generateReservationCode,
   NOTIFICATION_TYPE,
   PARKING_SPACE_STATUS,
   RESERVATION_STATUS,
-  unwrapApiResponse,
   validateTimeRange,
-  type ApiResponse,
   type AuthenticatedUser,
+  type NotificationType,
   type ParkingSpaceStatus,
   type ReservationStatus,
-} from '@parklink/common';
-import { firstValueFrom } from 'rxjs';
+} from '../../common';
 import { PrismaService } from '../../database/prisma.service';
 import { CancelReservationDto } from './dto/cancel-reservation.dto';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { ExtendReservationDto } from './dto/extend-reservation.dto';
 
+const PARKING_TIME_ZONE = 'America/Lima';
+
+const PARKING_DATE_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  timeZone: PARKING_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
 export interface ParkingSpaceSnapshot {
   id: string;
   pricePerHour: number;
   status: ParkingSpaceStatus;
+  openingTime: string;
+  closingTime: string;
+}
+
+interface LocalReservationTime {
+  dateKey: string;
+  minutes: number;
 }
 
 export interface ReservationRecord {
@@ -41,16 +56,11 @@ export interface ReservationRecord {
 
 @Injectable()
 export class ReservationsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly httpService: HttpService,
-    private readonly configService: ConfigService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(
     dto: CreateReservationDto,
     user: AuthenticatedUser,
-    authorizationHeader: string | undefined,
   ): Promise<ReservationRecord> {
     if (!validateTimeRange(dto.startTime, dto.endTime)) {
       throw new BadRequestException('Reservation startTime must be before endTime');
@@ -61,6 +71,8 @@ export class ReservationsService {
     if (parkingSpace.status !== PARKING_SPACE_STATUS.AVAILABLE) {
       throw new BadRequestException('Parking space is not available');
     }
+
+    this.assertWithinParkingSchedule(parkingSpace, dto.startTime, dto.endTime);
 
     await this.ensureNoOverlap(dto.parkingSpaceId, dto.startTime, dto.endTime);
 
@@ -79,7 +91,6 @@ export class ReservationsService {
     })) as ReservationRecord;
 
     await this.createNotification(
-      authorizationHeader,
       user.sub,
       'Reserva pendiente de pago',
       `Tu reserva ${reservation.reservationCode} fue creada y espera pago.`,
@@ -110,7 +121,6 @@ export class ReservationsService {
     id: string,
     dto: CancelReservationDto,
     user: AuthenticatedUser,
-    authorizationHeader: string | undefined,
   ): Promise<ReservationRecord> {
     const reservation = await this.findById(id);
     this.assertReservationOwner(reservation, user);
@@ -121,7 +131,6 @@ export class ReservationsService {
     })) as ReservationRecord;
 
     await this.createNotification(
-      authorizationHeader,
       user.sub,
       'Reserva cancelada',
       `Tu reserva ${reservation.reservationCode} fue cancelada. Motivo: ${dto.reason}`,
@@ -139,9 +148,11 @@ export class ReservationsService {
       throw new BadRequestException('newEndTime must be after startTime');
     }
 
+    const parkingSpace = await this.fetchParkingSpace(reservation.parkingSpaceId);
+    this.assertWithinParkingSchedule(parkingSpace, reservation.startTime, dto.newEndTime);
+
     await this.ensureNoOverlap(reservation.parkingSpaceId, reservation.endTime, dto.newEndTime, reservation.id);
 
-    const parkingSpace = await this.fetchParkingSpace(reservation.parkingSpaceId);
     const totalPrice = calculateReservationPrice(reservation.startTime, dto.newEndTime, parkingSpace.pricePerHour);
 
     return (await this.prisma.reservation.update({
@@ -164,11 +175,15 @@ export class ReservationsService {
   }
 
   private async fetchParkingSpace(parkingSpaceId: string): Promise<ParkingSpaceSnapshot> {
-    const response = await firstValueFrom(
-      this.httpService.get<ApiResponse<ParkingSpaceSnapshot>>(`/parking-spaces/${parkingSpaceId}`),
-    );
+    const parkingSpace = await this.prisma.parkingSpace.findUnique({
+      where: { id: parkingSpaceId },
+    });
 
-    return unwrapApiResponse(response.data);
+    if (!parkingSpace) {
+      throw new NotFoundException('Parking space not found');
+    }
+
+    return parkingSpace as ParkingSpaceSnapshot;
   }
 
   private async ensureNoOverlap(
@@ -204,23 +219,74 @@ export class ReservationsService {
     }
   }
 
+  private assertWithinParkingSchedule(
+    parkingSpace: ParkingSpaceSnapshot,
+    startTime: Date,
+    endTime: Date,
+  ): void {
+    const openingMinutes = this.parseScheduleTime(parkingSpace.openingTime);
+    const closingMinutes = this.parseScheduleTime(parkingSpace.closingTime);
+    const start = this.getLocalReservationTime(startTime);
+    const end = this.getLocalReservationTime(endTime);
+
+    if (start.dateKey !== end.dateKey) {
+      throw new BadRequestException('Reservation must start and end on the same local day');
+    }
+
+    if (closingMinutes <= openingMinutes) {
+      throw new BadRequestException('Parking space schedule is not valid');
+    }
+
+    if (start.minutes < openingMinutes || end.minutes > closingMinutes) {
+      throw new BadRequestException(
+        `Reservation must be within parking space opening hours (${parkingSpace.openingTime} - ${parkingSpace.closingTime})`,
+      );
+    }
+  }
+
+  private parseScheduleTime(time: string): number {
+    const [hoursRaw, minutesRaw] = time.split(':');
+    const hours = Number(hoursRaw);
+    const minutes = Number(minutesRaw);
+
+    if (
+      !Number.isInteger(hours) ||
+      !Number.isInteger(minutes) ||
+      hours < 0 ||
+      hours > 23 ||
+      minutes < 0 ||
+      minutes > 59
+    ) {
+      throw new BadRequestException('Parking space schedule is not valid');
+    }
+
+    return hours * 60 + minutes;
+  }
+
+  private getLocalReservationTime(date: Date): LocalReservationTime {
+    const parts = PARKING_DATE_TIME_FORMATTER.formatToParts(date);
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    const hours = Number(values.hour);
+    const minutes = Number(values.minute);
+
+    if (!values.year || !values.month || !values.day || !Number.isInteger(hours) || !Number.isInteger(minutes)) {
+      throw new BadRequestException('Reservation time is not valid');
+    }
+
+    return {
+      dateKey: `${values.year}-${values.month}-${values.day}`,
+      minutes: hours * 60 + minutes,
+    };
+  }
+
   private async createNotification(
-    authorizationHeader: string | undefined,
     userId: string,
     title: string,
     message: string,
-    type: string,
+    type: NotificationType,
   ): Promise<void> {
-    if (!authorizationHeader) {
-      return;
-    }
-
-    await firstValueFrom(
-      this.httpService.post(
-        '/notifications',
-        { userId, title, message, type },
-        { headers: { Authorization: authorizationHeader } },
-      ),
-    );
+    await this.prisma.notification.create({
+      data: { userId, title, message, type },
+    });
   }
 }

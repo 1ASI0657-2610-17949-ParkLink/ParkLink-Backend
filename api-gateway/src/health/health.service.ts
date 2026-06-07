@@ -20,7 +20,6 @@ export class HealthService {
       status: status === 'available' ? 'ok' : 'degraded',
       service: 'api-gateway',
       backend: status,
-      backendUrl: backendUrl ?? 'NOT_CONFIGURED',
       timestamp: new Date().toISOString(),
     };
   }
@@ -33,7 +32,7 @@ export class HealthService {
     try {
       await firstValueFrom(
         this.httpService.get(`${backendUrl}/health`, {
-          timeout: 1500,
+          timeout: 15000,
         }),
       );
       return 'available';

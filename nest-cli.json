@@ -34,7 +34,7 @@
       "sourceRoot": "apps/backend/src",
       "compilerOptions": {
         "tsConfigPath": "apps/backend/tsconfig.app.json",
-        "webpack": true
+        "webpack": false
       }
     }
   }

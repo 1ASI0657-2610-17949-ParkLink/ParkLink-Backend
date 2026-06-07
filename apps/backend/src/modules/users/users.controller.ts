@@ -6,7 +6,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { CurrentUser, JwtAuthGuard, type AuthenticatedUser } from '@parklink/common';
+import { CurrentUser, JwtAuthGuard, type AuthenticatedUser } from '../../common';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './users.service';
 

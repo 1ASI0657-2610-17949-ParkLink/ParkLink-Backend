@@ -5,7 +5,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { CurrentUser, type AuthenticatedUser } from '@parklink/common';
+import { CurrentUser, type AuthenticatedUser } from '../../common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDriverDto } from './dto/register-driver.dto';

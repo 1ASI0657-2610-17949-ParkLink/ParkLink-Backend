@@ -7,7 +7,7 @@ import express, { type Express, type Request, type Response } from 'express';
 import {
   HttpExceptionFilter,
   ResponseInterceptor,
-} from '@parklink/common';
+} from '../../libs/common/src';
 import { AppModule } from './app.module';
 
 const DEFAULT_PORT = Number(process.env.PORT) || 3000;

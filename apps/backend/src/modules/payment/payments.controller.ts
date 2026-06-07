@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Headers, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CurrentUser, JwtAuthGuard, type AuthenticatedUser } from '@parklink/common';
+import { CurrentUser, JwtAuthGuard, type AuthenticatedUser } from '../../common';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { RefundPaymentDto } from './dto/refund-payment.dto';
 import { PaymentsService } from './payments.service';
@@ -18,9 +18,8 @@ export class PaymentsController {
   create(
     @Body() dto: CreatePaymentDto,
     @CurrentUser() user: AuthenticatedUser,
-    @Headers('authorization') authorizationHeader: string | undefined,
   ) {
-    return this.paymentsService.create(dto, user, authorizationHeader);
+    return this.paymentsService.create(dto, user);
   }
 
   @Get(':id')
@@ -40,8 +39,7 @@ export class PaymentsController {
   refund(
     @Param('id') id: string,
     @Body() dto: RefundPaymentDto,
-    @Headers('authorization') authorizationHeader: string | undefined,
   ) {
-    return this.paymentsService.refund(id, dto, authorizationHeader);
+    return this.paymentsService.refund(id, dto);
   }
 }

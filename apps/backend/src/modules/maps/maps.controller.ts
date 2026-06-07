@@ -1,7 +1,7 @@
 import { Controller, Get, Query, Res } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { SkipResponseWrap } from '@parklink/common';
+import { SkipResponseWrap } from '../../common';
 import { CalculateDirectionsDto } from './dto/calculate-directions.dto';
 import { CalculateDistanceDto } from './dto/calculate-distance.dto';
 import { GeocodeAddressDto } from './dto/geocode-address.dto';

@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Headers, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CurrentUser, JwtAuthGuard, type AuthenticatedUser } from '@parklink/common';
+import { CurrentUser, JwtAuthGuard, type AuthenticatedUser } from '../../common';
 import { CancelReservationDto } from './dto/cancel-reservation.dto';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { ExtendReservationDto } from './dto/extend-reservation.dto';
@@ -19,9 +19,8 @@ export class ReservationsController {
   create(
     @Body() dto: CreateReservationDto,
     @CurrentUser() user: AuthenticatedUser,
-    @Headers('authorization') authorizationHeader: string | undefined,
   ) {
-    return this.reservationsService.create(dto, user, authorizationHeader);
+    return this.reservationsService.create(dto, user);
   }
 
   @Get('my')
@@ -42,9 +41,8 @@ export class ReservationsController {
     @Param('id') id: string,
     @Body() dto: CancelReservationDto,
     @CurrentUser() user: AuthenticatedUser,
-    @Headers('authorization') authorizationHeader: string | undefined,
   ) {
-    return this.reservationsService.cancel(id, dto, user, authorizationHeader);
+    return this.reservationsService.cancel(id, dto, user);
   }
 
   @Patch(':id/extend')

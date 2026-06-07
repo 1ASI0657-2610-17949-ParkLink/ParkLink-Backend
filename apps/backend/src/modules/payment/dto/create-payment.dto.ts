@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsNumber, IsOptional, IsString, Min } from 'class-validator';
-import { PAYMENT_STATUS, type PaymentStatus } from '@parklink/common';
+import { PAYMENT_STATUS, type PaymentStatus } from '../../../common';
 
 export class CreatePaymentDto {
   @ApiProperty({ example: 'reservation-id' })
