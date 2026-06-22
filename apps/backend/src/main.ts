@@ -3,7 +3,7 @@ import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { DocumentBuilder, type OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
 import express, { type Express, type Request, type Response } from 'express';
 import {
   HttpExceptionFilter,
@@ -16,6 +16,7 @@ const SWAGGER_TITLE = 'ParkLink Backend API';
 const SWAGGER_DESCRIPTION = 'API unificada de ParkLink — Auth, Users, Parking, Reservations, Payments, Notifications, Maps';
 const SWAGGER_TAGS = ['Auth', 'Users', 'Parking', 'Reservations', 'Payments', 'Notifications', 'Maps', 'Health'];
 const IS_BEARER_AUTH_ENABLED = true;
+const SWAGGER_JSON_PATH = '/docs-json';
 
 type RequestListener = (request: Request, response: Response) => void;
 
@@ -46,7 +47,51 @@ function configureApplication(app: INestApplication): void {
 
   const swaggerConfig = swaggerBuilder.build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document);
+  registerSwaggerDocs(app, document);
+}
+
+function registerSwaggerDocs(app: INestApplication, document: OpenAPIObject): void {
+  const server = app.getHttpAdapter().getInstance() as Express;
+  const html = buildSwaggerHtml(SWAGGER_TITLE);
+
+  server.get(SWAGGER_JSON_PATH, (_request: Request, response: Response) => {
+    response.type('application/json').send(document);
+  });
+  server.get(['/docs', '/docs/'], (_request: Request, response: Response) => {
+    response.type('html').send(html);
+  });
+}
+
+function buildSwaggerHtml(title: string): string {
+  return `<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+    <style>
+      body { margin: 0; background: #fafafa; }
+      .swagger-ui .topbar { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+    <script>
+      window.onload = function () {
+        window.ui = SwaggerUIBundle({
+          url: '${SWAGGER_JSON_PATH}',
+          dom_id: '#swagger-ui',
+          deepLinking: true,
+          presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+          layout: 'StandaloneLayout',
+        });
+      };
+    </script>
+  </body>
+</html>`;
 }
 
 async function createVercelServer(): Promise<Express> {
