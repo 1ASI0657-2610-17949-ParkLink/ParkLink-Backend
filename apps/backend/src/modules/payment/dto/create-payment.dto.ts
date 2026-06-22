@@ -20,4 +20,9 @@ export class CreatePaymentDto {
   @IsOptional()
   @IsEnum({ APPROVED: PAYMENT_STATUS.APPROVED, REJECTED: PAYMENT_STATUS.REJECTED })
   forceResult?: PaymentStatus;
+
+  @ApiPropertyOptional({ example: 'checkout-req-01HZX8WQ5GJ8VQ2K5Z' })
+  @IsOptional()
+  @IsString()
+  idempotencyKey?: string;
 }

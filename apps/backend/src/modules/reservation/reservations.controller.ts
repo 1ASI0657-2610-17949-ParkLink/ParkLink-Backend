@@ -31,8 +31,8 @@ export class ReservationsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get reservation by ID' })
-  findById(@Param('id') id: string) {
-    return this.reservationsService.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.reservationsService.findById(id, user);
   }
 
   @Patch(':id/cancel')

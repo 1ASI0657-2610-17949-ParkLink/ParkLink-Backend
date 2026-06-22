@@ -1,10 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import {
   calculateReservationPrice,
   generateReservationCode,
   NOTIFICATION_TYPE,
   PARKING_SPACE_STATUS,
   RESERVATION_STATUS,
+  USER_ROLE,
   validateTimeRange,
   type AuthenticatedUser,
   type NotificationType,
@@ -12,6 +14,9 @@ import {
   type ReservationStatus,
 } from '../../common';
 import { PrismaService } from '../../database/prisma.service';
+import { AvailabilityCacheService } from '../availability-cache/availability-cache.service';
+import { AUDIT_ACTION, AUDIT_ENTITY } from '../audit/audit.constants';
+import { AuditEventsService } from '../audit/audit-events.service';
 import { CancelReservationDto } from './dto/cancel-reservation.dto';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { ExtendReservationDto } from './dto/extend-reservation.dto';
@@ -41,6 +46,8 @@ interface LocalReservationTime {
   minutes: number;
 }
 
+type PrismaExecutor = PrismaService | Prisma.TransactionClient;
+
 export interface ReservationRecord {
   id: string;
   userId: string;
@@ -56,7 +63,11 @@ export interface ReservationRecord {
 
 @Injectable()
 export class ReservationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly availabilityCache: AvailabilityCacheService,
+    private readonly auditEvents: AuditEventsService,
+  ) {}
 
   async create(
     dto: CreateReservationDto,
@@ -66,29 +77,35 @@ export class ReservationsService {
       throw new BadRequestException('Reservation startTime must be before endTime');
     }
 
-    const parkingSpace = await this.fetchParkingSpace(dto.parkingSpaceId);
+    const reservation = await this.prisma.$transaction(
+      async (tx) => {
+        await this.lockParkingSpaceAvailability(tx, dto.parkingSpaceId);
+        const parkingSpace = await this.fetchParkingSpace(dto.parkingSpaceId, tx);
 
-    if (parkingSpace.status !== PARKING_SPACE_STATUS.AVAILABLE) {
-      throw new BadRequestException('Parking space is not available');
-    }
+        if (parkingSpace.status !== PARKING_SPACE_STATUS.AVAILABLE) {
+          throw new BadRequestException('Parking space is not available');
+        }
 
-    this.assertWithinParkingSchedule(parkingSpace, dto.startTime, dto.endTime);
+        this.assertWithinParkingSchedule(parkingSpace, dto.startTime, dto.endTime);
 
-    await this.ensureNoOverlap(dto.parkingSpaceId, dto.startTime, dto.endTime);
+        await this.ensureNoOverlap(dto.parkingSpaceId, dto.startTime, dto.endTime, undefined, tx);
 
-    const totalPrice = calculateReservationPrice(dto.startTime, dto.endTime, parkingSpace.pricePerHour);
+        const totalPrice = calculateReservationPrice(dto.startTime, dto.endTime, parkingSpace.pricePerHour);
 
-    const reservation = (await this.prisma.reservation.create({
-      data: {
-        userId: user.sub,
-        parkingSpaceId: dto.parkingSpaceId,
-        reservationCode: generateReservationCode(),
-        startTime: dto.startTime,
-        endTime: dto.endTime,
-        totalPrice,
-        status: RESERVATION_STATUS.PENDING_PAYMENT,
+        return (await tx.reservation.create({
+          data: {
+            userId: user.sub,
+            parkingSpaceId: dto.parkingSpaceId,
+            reservationCode: generateReservationCode(),
+            startTime: dto.startTime,
+            endTime: dto.endTime,
+            totalPrice,
+            status: RESERVATION_STATUS.PENDING_PAYMENT,
+          },
+        })) as ReservationRecord;
       },
-    })) as ReservationRecord;
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     await this.createNotification(
       user.sub,
@@ -96,6 +113,22 @@ export class ReservationsService {
       `Tu reserva ${reservation.reservationCode} fue creada y espera pago.`,
       NOTIFICATION_TYPE.RESERVATION_CONFIRMED,
     );
+
+    await Promise.all([
+      this.availabilityCache.invalidateAvailability(),
+      this.auditEvents.record({
+        actor: user,
+        action: AUDIT_ACTION.RESERVATION_CREATED,
+        entityType: AUDIT_ENTITY.RESERVATION,
+        entityId: reservation.id,
+        metadata: {
+          parkingSpaceId: reservation.parkingSpaceId,
+          startTime: reservation.startTime,
+          endTime: reservation.endTime,
+          totalPrice: reservation.totalPrice,
+        },
+      }),
+    ]);
 
     return reservation;
   }
@@ -107,11 +140,15 @@ export class ReservationsService {
     })) as ReservationRecord[];
   }
 
-  async findById(id: string): Promise<ReservationRecord> {
+  async findById(id: string, user?: AuthenticatedUser): Promise<ReservationRecord> {
     const reservation = (await this.prisma.reservation.findUnique({ where: { id } })) as ReservationRecord | null;
 
     if (!reservation) {
       throw new NotFoundException('Reservation not found');
+    }
+
+    if (user) {
+      this.assertReservationReader(reservation, user);
     }
 
     return reservation;
@@ -137,45 +174,96 @@ export class ReservationsService {
       NOTIFICATION_TYPE.RESERVATION_CANCELLED,
     );
 
+    await Promise.all([
+      this.availabilityCache.invalidateAvailability(),
+      this.auditEvents.record({
+        actor: user,
+        action: AUDIT_ACTION.RESERVATION_CANCELLED,
+        entityType: AUDIT_ENTITY.RESERVATION,
+        entityId: id,
+        metadata: { reason: dto.reason },
+      }),
+    ]);
+
     return updatedReservation;
   }
 
   async extend(id: string, dto: ExtendReservationDto, user: AuthenticatedUser): Promise<ReservationRecord> {
-    const reservation = await this.findById(id);
-    this.assertReservationOwner(reservation, user);
+    const updatedReservation = await this.prisma.$transaction(
+      async (tx) => {
+        const reservation = await this.findByIdWithClient(id, tx);
+        this.assertReservationOwner(reservation, user);
 
-    if (!validateTimeRange(reservation.startTime, dto.newEndTime)) {
-      throw new BadRequestException('newEndTime must be after startTime');
-    }
+        if (!validateTimeRange(reservation.startTime, dto.newEndTime)) {
+          throw new BadRequestException('newEndTime must be after startTime');
+        }
 
-    const parkingSpace = await this.fetchParkingSpace(reservation.parkingSpaceId);
-    this.assertWithinParkingSchedule(parkingSpace, reservation.startTime, dto.newEndTime);
+        await this.lockParkingSpaceAvailability(tx, reservation.parkingSpaceId);
+        const parkingSpace = await this.fetchParkingSpace(reservation.parkingSpaceId, tx);
+        this.assertWithinParkingSchedule(parkingSpace, reservation.startTime, dto.newEndTime);
 
-    await this.ensureNoOverlap(reservation.parkingSpaceId, reservation.endTime, dto.newEndTime, reservation.id);
+        await this.ensureNoOverlap(
+          reservation.parkingSpaceId,
+          reservation.endTime,
+          dto.newEndTime,
+          reservation.id,
+          tx,
+        );
 
-    const totalPrice = calculateReservationPrice(reservation.startTime, dto.newEndTime, parkingSpace.pricePerHour);
+        const totalPrice = calculateReservationPrice(reservation.startTime, dto.newEndTime, parkingSpace.pricePerHour);
 
-    return (await this.prisma.reservation.update({
-      where: { id },
-      data: {
-        endTime: dto.newEndTime,
-        totalPrice,
+        return (await tx.reservation.update({
+          where: { id },
+          data: {
+            endTime: dto.newEndTime,
+            totalPrice,
+          },
+        })) as ReservationRecord;
       },
-    })) as ReservationRecord;
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    await Promise.all([
+      this.availabilityCache.invalidateAvailability(),
+      this.auditEvents.record({
+        actor: user,
+        action: AUDIT_ACTION.RESERVATION_EXTENDED,
+        entityType: AUDIT_ENTITY.RESERVATION,
+        entityId: id,
+        metadata: { newEndTime: dto.newEndTime, totalPrice: updatedReservation.totalPrice },
+      }),
+    ]);
+
+    return updatedReservation;
   }
 
   async confirm(id: string, user: AuthenticatedUser): Promise<ReservationRecord> {
     const reservation = await this.findById(id);
     this.assertReservationOwner(reservation, user);
 
-    return (await this.prisma.reservation.update({
+    const updatedReservation = (await this.prisma.reservation.update({
       where: { id },
       data: { status: RESERVATION_STATUS.CONFIRMED },
     })) as ReservationRecord;
+
+    await Promise.all([
+      this.availabilityCache.invalidateAvailability(),
+      this.auditEvents.record({
+        actor: user,
+        action: AUDIT_ACTION.RESERVATION_CONFIRMED,
+        entityType: AUDIT_ENTITY.RESERVATION,
+        entityId: id,
+      }),
+    ]);
+
+    return updatedReservation;
   }
 
-  private async fetchParkingSpace(parkingSpaceId: string): Promise<ParkingSpaceSnapshot> {
-    const parkingSpace = await this.prisma.parkingSpace.findUnique({
+  private async fetchParkingSpace(
+    parkingSpaceId: string,
+    prisma: PrismaExecutor = this.prisma,
+  ): Promise<ParkingSpaceSnapshot> {
+    const parkingSpace = await prisma.parkingSpace.findUnique({
       where: { id: parkingSpaceId },
     });
 
@@ -191,6 +279,7 @@ export class ReservationsService {
     startTime: Date,
     endTime: Date,
     excludedReservationId?: string,
+    prisma: PrismaExecutor = this.prisma,
   ): Promise<void> {
     const blockingStatuses = [
       RESERVATION_STATUS.PENDING_PAYMENT,
@@ -198,7 +287,7 @@ export class ReservationsService {
       RESERVATION_STATUS.ACTIVE,
     ];
 
-    const existingReservation = await this.prisma.reservation.findFirst({
+    const existingReservation = await prisma.reservation.findFirst({
       where: {
         parkingSpaceId,
         id: excludedReservationId ? { not: excludedReservationId } : undefined,
@@ -213,10 +302,32 @@ export class ReservationsService {
     }
   }
 
+  private async findByIdWithClient(id: string, prisma: PrismaExecutor): Promise<ReservationRecord> {
+    const reservation = (await prisma.reservation.findUnique({ where: { id } })) as ReservationRecord | null;
+
+    if (!reservation) {
+      throw new NotFoundException('Reservation not found');
+    }
+
+    return reservation;
+  }
+
+  private async lockParkingSpaceAvailability(prisma: Prisma.TransactionClient, parkingSpaceId: string): Promise<void> {
+    await prisma.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${parkingSpaceId}))`;
+  }
+
   private assertReservationOwner(reservation: ReservationRecord, user: AuthenticatedUser): void {
     if (reservation.userId !== user.sub) {
       throw new BadRequestException('Reservation does not belong to the authenticated user');
     }
+  }
+
+  private assertReservationReader(reservation: ReservationRecord, user: AuthenticatedUser): void {
+    if (user.role === USER_ROLE.ADMIN || reservation.userId === user.sub) {
+      return;
+    }
+
+    throw new BadRequestException('Reservation does not belong to the authenticated user');
   }
 
   private assertWithinParkingSchedule(
