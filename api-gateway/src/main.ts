@@ -1,5 +1,5 @@
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigService } from '@nestjs/config';
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -13,7 +13,6 @@ import { AppModule } from './app.module';
 const DEFAULT_PORT = Number(process.env.PORT) || 3000;
 const SWAGGER_TITLE = 'ParkLink API Gateway';
 const SWAGGER_DESCRIPTION = 'API Gateway que redirige todas las solicitudes al backend consolidado de ParkLink.';
-const SWAGGER_TAGS = ['Proxy', 'Health'];
 const IS_BEARER_AUTH_ENABLED = true;
 
 type RequestListener = (request: Request, response: Response) => void;

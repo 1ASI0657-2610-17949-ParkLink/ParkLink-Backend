@@ -7,6 +7,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser, JwtAuthGuard, Roles, RolesGuard, USER_ROLE, type AuthenticatedUser } from '../../common';
+import { AddParkingSpacePhotoDto } from './dto/add-parking-space-photo.dto';
 import { CreateParkingSpaceDto } from './dto/create-parking-space.dto';
 import { SearchParkingSpacesDto } from './dto/search-parking-spaces.dto';
 import { UpdateParkingSpaceStatusDto } from './dto/update-parking-space-status.dto';
@@ -69,6 +70,18 @@ export class ParkingSpacesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.parkingSpacesService.updateStatus(id, dto.status, user);
+  }
+
+  @Post(':id/photos')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Attach a photo URL or generate an S3 presigned upload URL' })
+  addPhoto(
+    @Param('id') id: string,
+    @Body() dto: AddParkingSpacePhotoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.parkingSpacesService.addPhoto(id, dto, user);
   }
 
   @Delete(':id')
