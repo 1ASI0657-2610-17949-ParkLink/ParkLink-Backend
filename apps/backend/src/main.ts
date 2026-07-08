@@ -57,7 +57,7 @@ function registerSwaggerDocs(app: INestApplication, document: OpenAPIObject): vo
   server.get(SWAGGER_JSON_PATH, (_request: Request, response: Response) => {
     response.type('application/json').send(document);
   });
-  server.get(['/docs', '/docs/'], (_request: Request, response: Response) => {
+  server.get(['/', '/docs', '/docs/'], (_request: Request, response: Response) => {
     response.type('html').send(html);
   });
 }

@@ -15,7 +15,7 @@ import { AuditModule } from './modules/audit/audit.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: [join(__dirname, '..', '..', '.env')],
+      envFilePath: [join(process.cwd(), 'apps', 'backend', '.env'), join(process.cwd(), '.env')],
     }),
     AuthModule,
     UsersModule,

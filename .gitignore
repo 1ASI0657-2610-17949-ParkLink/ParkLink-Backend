@@ -8,5 +8,8 @@ coverage/
 .vercel/
 apps/*/src/generated/
 apps/*/prisma/migrations/
+!apps/backend/prisma/migrations/
+!apps/backend/prisma/migrations/202607070001_availability_indexes_and_no_overlap/
+!apps/backend/prisma/migrations/202607070001_availability_indexes_and_no_overlap/migration.sql
 *.log
 .vercel

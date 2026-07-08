@@ -18,10 +18,21 @@ export class AvailabilityCacheService implements OnModuleDestroy {
   private readonly memoryCache = new Map<string, CacheEntry>();
   private memoryVersion = 0;
   private readonly redis?: Redis;
+  private cacheHit = 0;
+  private cacheMiss = 0;
+  private cacheInvalidation = 0;
 
   constructor(configService: ConfigService) {
     this.ttlSeconds = this.parseTtl(configService.get<string>('AVAILABILITY_CACHE_TTL_SECONDS'));
     const redisUrl = configService.get<string>('REDIS_URL') ?? configService.get<string>('UPSTASH_REDIS_URL');
+
+    if (!redisUrl && configService.get<string>('REQUIRE_REDIS_CACHE') === 'true') {
+      throw new Error('REDIS_URL is required when REQUIRE_REDIS_CACHE=true');
+    }
+
+    if (!redisUrl && configService.get<string>('NODE_ENV') === 'production') {
+      this.logger.warn('REDIS_URL is not configured; using in-memory availability cache');
+    }
 
     if (redisUrl) {
       this.redis = new Redis(redisUrl, {
@@ -40,20 +51,24 @@ export class AvailabilityCacheService implements OnModuleDestroy {
 
     if (this.redis) {
       const cachedValue = await this.redis.get(key);
+      this.recordCacheLookup(Boolean(cachedValue));
       return cachedValue ? (JSON.parse(cachedValue) as T) : null;
     }
 
     const entry = this.memoryCache.get(key);
 
     if (!entry) {
+      this.recordCacheLookup(false);
       return null;
     }
 
     if (Date.now() > entry.expiresAt) {
       this.memoryCache.delete(key);
+      this.recordCacheLookup(false);
       return null;
     }
 
+    this.recordCacheLookup(true);
     return JSON.parse(entry.value) as T;
   }
 
@@ -73,6 +88,9 @@ export class AvailabilityCacheService implements OnModuleDestroy {
   }
 
   async invalidateAvailability(): Promise<void> {
+    this.cacheInvalidation += 1;
+    this.logger.log(`availabilityCache invalidation=${this.cacheInvalidation}`);
+
     if (this.redis) {
       await this.redis.incr(AVAILABILITY_VERSION_KEY);
       return;
@@ -119,5 +137,15 @@ export class AvailabilityCacheService implements OnModuleDestroy {
   private parseTtl(rawTtl: string | undefined): number {
     const parsedTtl = Number(rawTtl);
     return Number.isFinite(parsedTtl) && parsedTtl > 0 ? parsedTtl : DEFAULT_TTL_SECONDS;
+  }
+
+  private recordCacheLookup(hit: boolean): void {
+    if (hit) {
+      this.cacheHit += 1;
+    } else {
+      this.cacheMiss += 1;
+    }
+
+    this.logger.log(`availabilityCache hit=${this.cacheHit} miss=${this.cacheMiss}`);
   }
 }

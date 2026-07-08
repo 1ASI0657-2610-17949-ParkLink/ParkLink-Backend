@@ -55,6 +55,8 @@ interface ParkingPhotoUpload {
   expiresInSeconds?: number;
 }
 
+const DEFAULT_SEARCH_LIMIT = 50;
+
 @Injectable()
 export class ParkingSpacesService {
   constructor(
@@ -129,7 +131,8 @@ export class ParkingSpacesService {
       .map((space) => this.normalizeParkingSpace(space))
       .map((space) => this.withDistance(space, dto))
       .filter((space) => this.matchesDistance(space, dto))
-      .filter((space) => this.matchesSchedule(space, dto));
+      .filter((space) => this.matchesSchedule(space, dto))
+      .slice(dto.offset ?? 0, (dto.offset ?? 0) + (dto.limit ?? DEFAULT_SEARCH_LIMIT));
 
     await this.availabilityCache.set(cacheCriteria, result);
 
@@ -414,6 +417,8 @@ export class ParkingSpacesService {
       startTime: dto.startTime,
       endTime: dto.endTime,
       status: dto.status ?? PARKING_SPACE_STATUS.AVAILABLE,
+      limit: dto.limit ?? DEFAULT_SEARCH_LIMIT,
+      offset: dto.offset ?? 0,
     };
   }
 }

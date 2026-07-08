@@ -50,6 +50,8 @@ model ParkingSpace {
   status      ParkingSpaceStatus @default(AVAILABLE)
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
+  @@index([status, pricePerHour])
+  @@index([openingTime, closingTime])
 }
 
 enum ReservationStatus {
@@ -72,6 +74,7 @@ model Reservation {
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   @@index([parkingSpaceId, startTime, endTime])
+  @@index([parkingSpaceId, status, startTime, endTime])
 }
 
 enum PaymentStatus {

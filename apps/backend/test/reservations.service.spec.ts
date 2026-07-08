@@ -65,7 +65,7 @@ describe('ReservationsService', () => {
       auditEvents as unknown as AuditEventsService,
     );
 
-    return { service, tx, txExecuteRaw, txReservationCreate, availabilityCache, auditEvents };
+    return { service, prisma, tx, txExecuteRaw, txReservationCreate, availabilityCache, auditEvents };
   };
 
   it('serializes reservation creation with an advisory lock before checking overlaps', async () => {
@@ -87,11 +87,41 @@ describe('ReservationsService', () => {
     expect(auditEvents.record).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'reservation-1' }));
   });
 
-  it('rejects overlapping reservations inside the same transaction', async () => {
+  it('rejects overlapping reservations for the same parking space and time', async () => {
     const { service, tx, txReservationCreate } = buildService();
     tx.reservation.findFirst.mockResolvedValueOnce({ id: 'existing-reservation' });
 
     await expect(service.create(dto, user)).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.reservation.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        parkingSpaceId: dto.parkingSpaceId,
+        status: {
+          in: [
+            RESERVATION_STATUS.PENDING_PAYMENT,
+            RESERVATION_STATUS.CONFIRMED,
+            RESERVATION_STATUS.ACTIVE,
+          ],
+        },
+        startTime: { lt: dto.endTime },
+        endTime: { gt: dto.startTime },
+      }),
+    });
     expect(txReservationCreate).not.toHaveBeenCalled();
+  });
+
+  it('does not change the parking space status when creating a reservation', async () => {
+    const { service, tx } = buildService();
+
+    await service.create(dto, user);
+
+    expect(tx.parkingSpace.findUnique).toHaveBeenCalledWith({ where: { id: dto.parkingSpaceId } });
+    expect('update' in tx.parkingSpace).toBe(false);
+  });
+
+  it('maps database overlap conflicts to the same reservation error', async () => {
+    const { service, prisma } = buildService();
+    prisma.$transaction.mockRejectedValueOnce({ code: 'P2004' });
+
+    await expect(service.create(dto, user)).rejects.toThrow('Parking space already has a reservation in this time range');
   });
 });

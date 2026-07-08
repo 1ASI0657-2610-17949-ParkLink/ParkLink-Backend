@@ -33,4 +33,28 @@ describe('ProxyService', () => {
     expect(response.status).toHaveBeenCalledWith(200);
     expect(response.json).toHaveBeenCalledWith({ ok: true });
   });
+
+  it('retries one transient upstream 5xx before responding', async () => {
+    const httpService = {
+      request: jest
+        .fn()
+        .mockReturnValueOnce(of({ status: 502, data: { error: 'bad gateway' }, headers: {} }))
+        .mockReturnValueOnce(of({ status: 200, data: { ok: true }, headers: {} })),
+    } as unknown as HttpService;
+    const service = new ProxyService(httpService);
+    const request = {
+      method: 'GET',
+      originalUrl: '/parking-spaces/search',
+      headers: {},
+    } as unknown as Request;
+    const response = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    } as unknown as Response;
+
+    await service.forward(request, response, 'http://localhost:3001');
+
+    expect(httpService.request).toHaveBeenCalledTimes(2);
+    expect(response.status).toHaveBeenCalledWith(200);
+  });
 });

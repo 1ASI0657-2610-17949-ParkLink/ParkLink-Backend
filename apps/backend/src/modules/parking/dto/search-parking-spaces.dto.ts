@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 import { PARKING_SPACE_STATUS } from '../../../common';
 
 export class SearchParkingSpacesDto {
@@ -51,4 +51,19 @@ export class SearchParkingSpacesDto {
   @IsOptional()
   @IsEnum(PARKING_SPACE_STATUS)
   status?: string;
+
+  @ApiPropertyOptional({ example: 50, default: 50, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @ApiPropertyOptional({ example: 0, default: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset?: number;
 }

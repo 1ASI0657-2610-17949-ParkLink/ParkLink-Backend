@@ -77,35 +77,32 @@ export class ReservationsService {
       throw new BadRequestException('Reservation startTime must be before endTime');
     }
 
-    const reservation = await this.prisma.$transaction(
-      async (tx) => {
-        await this.lockParkingSpaceAvailability(tx, dto.parkingSpaceId);
-        const parkingSpace = await this.fetchParkingSpace(dto.parkingSpaceId, tx);
+    const reservation = await this.runReservationTransaction(async (tx) => {
+      await this.lockParkingSpaceAvailability(tx, dto.parkingSpaceId);
+      const parkingSpace = await this.fetchParkingSpace(dto.parkingSpaceId, tx);
 
-        if (parkingSpace.status !== PARKING_SPACE_STATUS.AVAILABLE) {
-          throw new BadRequestException('Parking space is not available');
-        }
+      if (parkingSpace.status !== PARKING_SPACE_STATUS.AVAILABLE) {
+        throw new BadRequestException('Parking space is not available');
+      }
 
-        this.assertWithinParkingSchedule(parkingSpace, dto.startTime, dto.endTime);
+      this.assertWithinParkingSchedule(parkingSpace, dto.startTime, dto.endTime);
 
-        await this.ensureNoOverlap(dto.parkingSpaceId, dto.startTime, dto.endTime, undefined, tx);
+      await this.ensureNoOverlap(dto.parkingSpaceId, dto.startTime, dto.endTime, undefined, tx);
 
-        const totalPrice = calculateReservationPrice(dto.startTime, dto.endTime, parkingSpace.pricePerHour);
+      const totalPrice = calculateReservationPrice(dto.startTime, dto.endTime, parkingSpace.pricePerHour);
 
-        return (await tx.reservation.create({
-          data: {
-            userId: user.sub,
-            parkingSpaceId: dto.parkingSpaceId,
-            reservationCode: generateReservationCode(),
-            startTime: dto.startTime,
-            endTime: dto.endTime,
-            totalPrice,
-            status: RESERVATION_STATUS.PENDING_PAYMENT,
-          },
-        })) as ReservationRecord;
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
+      return (await tx.reservation.create({
+        data: {
+          userId: user.sub,
+          parkingSpaceId: dto.parkingSpaceId,
+          reservationCode: generateReservationCode(),
+          startTime: dto.startTime,
+          endTime: dto.endTime,
+          totalPrice,
+          status: RESERVATION_STATUS.PENDING_PAYMENT,
+        },
+      })) as ReservationRecord;
+    });
 
     await this.createNotification(
       user.sub,
@@ -189,39 +186,36 @@ export class ReservationsService {
   }
 
   async extend(id: string, dto: ExtendReservationDto, user: AuthenticatedUser): Promise<ReservationRecord> {
-    const updatedReservation = await this.prisma.$transaction(
-      async (tx) => {
-        const reservation = await this.findByIdWithClient(id, tx);
-        this.assertReservationOwner(reservation, user);
+    const updatedReservation = await this.runReservationTransaction(async (tx) => {
+      const reservation = await this.findByIdWithClient(id, tx);
+      this.assertReservationOwner(reservation, user);
 
-        if (!validateTimeRange(reservation.startTime, dto.newEndTime)) {
-          throw new BadRequestException('newEndTime must be after startTime');
-        }
+      if (!validateTimeRange(reservation.startTime, dto.newEndTime)) {
+        throw new BadRequestException('newEndTime must be after startTime');
+      }
 
-        await this.lockParkingSpaceAvailability(tx, reservation.parkingSpaceId);
-        const parkingSpace = await this.fetchParkingSpace(reservation.parkingSpaceId, tx);
-        this.assertWithinParkingSchedule(parkingSpace, reservation.startTime, dto.newEndTime);
+      await this.lockParkingSpaceAvailability(tx, reservation.parkingSpaceId);
+      const parkingSpace = await this.fetchParkingSpace(reservation.parkingSpaceId, tx);
+      this.assertWithinParkingSchedule(parkingSpace, reservation.startTime, dto.newEndTime);
 
-        await this.ensureNoOverlap(
-          reservation.parkingSpaceId,
-          reservation.endTime,
-          dto.newEndTime,
-          reservation.id,
-          tx,
-        );
+      await this.ensureNoOverlap(
+        reservation.parkingSpaceId,
+        reservation.endTime,
+        dto.newEndTime,
+        reservation.id,
+        tx,
+      );
 
-        const totalPrice = calculateReservationPrice(reservation.startTime, dto.newEndTime, parkingSpace.pricePerHour);
+      const totalPrice = calculateReservationPrice(reservation.startTime, dto.newEndTime, parkingSpace.pricePerHour);
 
-        return (await tx.reservation.update({
-          where: { id },
-          data: {
-            endTime: dto.newEndTime,
-            totalPrice,
-          },
-        })) as ReservationRecord;
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
+      return (await tx.reservation.update({
+        where: { id },
+        data: {
+          endTime: dto.newEndTime,
+          totalPrice,
+        },
+      })) as ReservationRecord;
+    });
 
     await Promise.all([
       this.availabilityCache.invalidateAvailability(),
@@ -310,6 +304,29 @@ export class ReservationsService {
     }
 
     return reservation;
+  }
+
+  private async runReservationTransaction<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    try {
+      return await this.prisma.$transaction(operation, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (error) {
+      if (this.isReservationConflict(error)) {
+        throw new BadRequestException('Parking space already has a reservation in this time range');
+      }
+
+      throw error;
+    }
+  }
+
+  private isReservationConflict(error: unknown): boolean {
+    if (!error || typeof error !== 'object' || !('code' in error)) {
+      return false;
+    }
+
+    const code = (error as { code?: unknown }).code;
+    return code === 'P2004' || code === 'P2034';
   }
 
   private async lockParkingSpaceAvailability(prisma: Prisma.TransactionClient, parkingSpaceId: string): Promise<void> {

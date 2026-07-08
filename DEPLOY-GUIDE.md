@@ -208,6 +208,8 @@ Ve al proyecto **parklink-platform** en Vercel:
 | `JWT_SECRET` | `cambia_esto_por_un_secreto_seguro` | Production, Preview, Development |
 | `JWT_EXPIRES_IN` | `1d` | Production, Preview, Development |
 | `GOOGLE_MAPS_API_KEY` | `tu_google_maps_key` (sin comillas) | Production, Preview, Development |
+| `REDIS_URL` | `redis://...` o Upstash Redis recomendado para cache compartido | Production, Preview, Development |
+| `REQUIRE_REDIS_CACHE` | `true` para fallar si no hay Redis; `false` para fallback memoria | Production, Preview, Development |
 | `PORT` | `4000` | Production, Preview, Development |
 
 > 🔐 **Para JWT_SECRET:** Genera un secreto fuerte:
@@ -231,7 +233,18 @@ Ve al proyecto **api-gateway** en Vercel:
 > **BACKEND_URL** debe apuntar al dominio de producción del backend (parklink-platform).  
 > Si el backend cambia de dominio, actualiza esta variable.
 
-### 5.3. Configurar IP Allow (si Render lo requiere)
+### 5.3. Configurar clientes contra el API Gateway
+
+Los clientes no deben consumir `parklink-platform` directo en producción.
+
+| Cliente | Variable | Valor producción |
+|---|---|---|
+| Web Vite | `VITE_API_URL` | `https://api-gateway-xi-five.vercel.app` |
+| Flutter | `--dart-define=PARKLINK_API_URL=...` | `https://api-gateway-xi-five.vercel.app` |
+
+Para Android Flutter, `GOOGLE_MAPS_API_KEY` se toma de variable de entorno, `-PGOOGLE_MAPS_API_KEY` o `android/local.properties`. Si falta localmente y tienes Vercel CLI autenticado, copia el valor desde las variables del proyecto Vercel que lo tenga configurado y expórtalo antes de `flutter run`.
+
+### 5.4. Configurar IP Allow (si Render lo requiere)
 
 Render Free no tiene IP Allow List. Pero si usas un plan **Starter** o superior de Render:
 
@@ -481,6 +494,8 @@ npx vercel logs parklink-platform
 | `JWT_SECRET` | Secreto para firmar tokens JWT | `a1b2c3d4...` (64 chars hex) |
 | `JWT_EXPIRES_IN` | Duración del token | `1d` |
 | `GOOGLE_MAPS_API_KEY` | API Key de Google Maps | `AIzaSy...` |
+| `REDIS_URL` | Cache Redis recomendado en producción | `rediss://...` |
+| `REQUIRE_REDIS_CACHE` | Falla el arranque si Redis falta | `false` |
 | `PORT` | Puerto local (no usado en Vercel) | `4000` |
 
 ### API Gateway — `api-gateway`
@@ -489,6 +504,13 @@ npx vercel logs parklink-platform
 |---|---|---|
 | `BACKEND_URL` | URL del backend desplegado | `https://parklink-platform.vercel.app` |
 | `PORT` | Puerto local (no usado en Vercel) | `3000` |
+
+### Clientes
+
+| Cliente | Variable | Ejemplo |
+|---|---|---|
+| Web | `VITE_API_URL` | `https://api-gateway-xi-five.vercel.app` |
+| Mobile Flutter | `PARKLINK_API_URL` (`--dart-define`) | `https://api-gateway-xi-five.vercel.app` |
 
 ---
 
